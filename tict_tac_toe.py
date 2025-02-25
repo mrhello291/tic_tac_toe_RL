@@ -1,5 +1,7 @@
 import numpy as np
 import random
+import pickle
+import os
 
 class TicTacToeEnv:
     def __init__(self):
@@ -35,7 +37,7 @@ class TicTacToeEnv:
 
 class QLearningAgent:
     def __init__(self, alpha=0.1, gamma=0.9, epsilon=1.0):
-        self.q_table = {}  # state (tuple) -> list of Q-values for each action
+        self.q_table = {}  # key: state (tuple), value: np.array of Q-values for 9 actions
         self.alpha = alpha
         self.gamma = gamma
         self.epsilon = epsilon
@@ -46,14 +48,14 @@ class QLearningAgent:
     def get_q_values(self, state):
         key = self.get_state_key(state)
         if key not in self.q_table:
-            self.q_table[key] = np.zeros(9)  # 9 possible actions
+            self.q_table[key] = np.zeros(9)  # initialize Q-values for all 9 actions
         return self.q_table[key]
 
     def choose_action(self, state, valid_actions):
         q_values = self.get_q_values(state)
+        # Epsilon-greedy policy: explore or choose best valid action.
         if random.random() < self.epsilon:
             return random.choice(valid_actions)
-        # Choose the action with the highest Q-value among valid moves
         q_valid = {a: q_values[a] for a in valid_actions}
         return max(q_valid, key=q_valid.get)
 
@@ -61,7 +63,19 @@ class QLearningAgent:
         q_values = self.get_q_values(state)
         q_next = self.get_q_values(next_state)
         max_q_next = max([q_next[a] for a in next_valid_actions]) if next_valid_actions else 0
-        q_values[action] = q_values[action] + self.alpha * (reward + self.gamma * max_q_next - q_values[action])
+        q_values[action] += self.alpha * (reward + self.gamma * max_q_next - q_values[action])
+    
+    def save_q_table(self, filename):
+        """Save the Q-table to a file."""
+        with open(filename, 'wb') as f:
+            pickle.dump(self.q_table, f)
+        print(f"Q-table saved to '{filename}'")
+    
+    def load_q_table(self, filename):
+        """Load the Q-table from a file."""
+        with open(filename, 'rb') as f:
+            self.q_table = pickle.load(f)
+        print(f"Q-table loaded from '{filename}'")
 
 # Hyperparameters
 num_episodes = 50000
@@ -70,10 +84,19 @@ gamma = 0.9
 epsilon = 1.0
 min_epsilon = 0.1
 epsilon_decay = 0.99995  # Adjust decay rate as needed
+q_table_file = "q_table.pkl"
 
+# Initialize agent and environment
 agent = QLearningAgent(alpha=alpha, gamma=gamma, epsilon=epsilon)
 env = TicTacToeEnv()
 
+# Load existing Q-table if available
+if os.path.exists(q_table_file):
+    agent.load_q_table(q_table_file)
+else:
+    print("No Q-table file found. Starting from scratch.")
+
+# Training loop
 for episode in range(num_episodes):
     state = env.reset()
     done = False
@@ -81,16 +104,15 @@ for episode in range(num_episodes):
     while not done:
         valid_actions = env.get_valid_actions()
         action = agent.choose_action(state, valid_actions)
-        # Agent plays (player 1)
         next_state, reward, done = env.step(action, player=1)
 
-        # If game isn't over, let the opponent play (random move)
+        # Opponent makes a move (using a random policy)
         if not done:
             opp_valid = env.get_valid_actions()
-            if opp_valid:  # Opponent makes a move
+            if opp_valid:
                 opp_action = random.choice(opp_valid)
                 next_state, opp_reward, done = env.step(opp_action, player=-1)
-                # Invert the opponent's reward for the agent's perspective
+                # If game ended after opponent's move, adjust reward.
                 if done:
                     reward = -opp_reward
 
@@ -98,10 +120,11 @@ for episode in range(num_episodes):
         agent.update(state, action, reward, next_state, next_valid_actions)
         state = next_state
 
-    # Decay epsilon
+    # Decay epsilon after each episode
     agent.epsilon = max(min_epsilon, agent.epsilon * epsilon_decay)
 
     if (episode + 1) % 5000 == 0:
         print(f"Episode {episode+1}/{num_episodes} - Epsilon: {agent.epsilon:.4f}")
 
-# After training, you can save agent.q_table to a file for later use.
+# Save the updated Q-table after training
+agent.save_q_table(q_table_file)
