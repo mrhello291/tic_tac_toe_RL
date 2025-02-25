@@ -1,3 +1,4 @@
+# tic_tac_toe_rl.py
 import numpy as np
 import random
 import pickle
@@ -77,54 +78,56 @@ class QLearningAgent:
             self.q_table = pickle.load(f)
         print(f"Q-table loaded from '{filename}'")
 
-# Hyperparameters
-num_episodes = 50000
-alpha = 0.1
-gamma = 0.9
-epsilon = 1.0
-min_epsilon = 0.1
-epsilon_decay = 0.99995  # Adjust decay rate as needed
-q_table_file = "q_table.pkl"
+# If you run this file directly, it will train the agent and update the Q-table.
+if __name__ == "__main__":
+    # Hyperparameters
+    num_episodes = 50000
+    alpha = 0.1
+    gamma = 0.9
+    epsilon = 1.0
+    min_epsilon = 0.1
+    epsilon_decay = 0.99995  # Adjust decay rate as needed
+    q_table_file = "q_table.pkl"
 
-# Initialize agent and environment
-agent = QLearningAgent(alpha=alpha, gamma=gamma, epsilon=epsilon)
-env = TicTacToeEnv()
+    # Initialize agent and environment
+    agent = QLearningAgent(alpha=alpha, gamma=gamma, epsilon=epsilon)
+    env = TicTacToeEnv()
 
-# Load existing Q-table if available
-if os.path.exists(q_table_file):
-    agent.load_q_table(q_table_file)
-else:
-    print("No Q-table file found. Starting from scratch.")
+    # Load existing Q-table if available
+    if os.path.exists(q_table_file):
+        agent.load_q_table(q_table_file)
+    else:
+        print("No Q-table file found. Starting from scratch.")
 
-# Training loop
-for episode in range(num_episodes):
-    state = env.reset()
-    done = False
+    # Training loop
+    for episode in range(num_episodes):
+        state = env.reset()
+        done = False
 
-    while not done:
-        valid_actions = env.get_valid_actions()
-        action = agent.choose_action(state, valid_actions)
-        next_state, reward, done = env.step(action, player=1)
+        while not done:
+            valid_actions = env.get_valid_actions()
+            action = agent.choose_action(state, valid_actions)
+            next_state, reward, done = env.step(action, player=1)
 
-        # Opponent makes a move (using a random policy)
-        if not done:
-            opp_valid = env.get_valid_actions()
-            if opp_valid:
-                opp_action = random.choice(opp_valid)
-                next_state, opp_reward, done = env.step(opp_action, player=-1)
-                # If game ended after opponent's move, adjust reward.
-                if done:
-                    reward = -opp_reward
+            # Opponent makes a move (random policy)
+            if not done:
+                opp_valid = env.get_valid_actions()
+                if opp_valid:
+                    opp_action = random.choice(opp_valid)
+                    next_state, opp_reward, done = env.step(opp_action, player=-1)
+                    # If game ended after opponent's move, adjust reward.
+                    if done:
+                        reward = -opp_reward
 
-        next_valid_actions = env.get_valid_actions()
-        agent.update(state, action, reward, next_state, next_valid_actions)
-        state = next_state
+            next_valid_actions = env.get_valid_actions()
+            agent.update(state, action, reward, next_state, next_valid_actions)
+            state = next_state
 
-    # Decay epsilon after each episode
-    agent.epsilon = max(min_epsilon, agent.epsilon * epsilon_decay)
+        # Decay epsilon after each episode
+        agent.epsilon = max(min_epsilon, agent.epsilon * epsilon_decay)
 
-    if (episode + 1) % 5000 == 0:
-        print(f"Episode {episode+1}/{num_episodes} - Epsilon: {agent.epsilon:.4f}")
+        if (episode + 1) % 5000 == 0:
+            print(f"Episode {episode+1}/{num_episodes} - Epsilon: {agent.epsilon:.4f}")
 
-# Save the updated Q-table after training
-agent.save_q_table(q_table_file)
+    # Save the updated Q-table after training
+    agent.save_q_table(q_table_file)
