@@ -1,137 +1,152 @@
-# tic_tac_toe_gui.py
 import tkinter as tk
 from tkinter import messagebox
-import numpy as np
 import os
-from tic_tac_toe_rl import TicTacToeEnv, QLearningAgent
-
-# Function to check the winner.
-def check_winner(board):
-    win_conditions = [
-        (0,1,2), (3,4,5), (6,7,8),
-        (0,3,6), (1,4,7), (2,5,8),
-        (0,4,8), (2,4,6)
-    ]
-    for (i,j,k) in win_conditions:
-        if board[i] != 0 and board[i] == board[j] == board[k]:
-            return board[i]
-    if 0 not in board:
-        return 0  # draw
-    return None
+from tic_tac_toe_rl import TicTacToeEnv, TDLearningAgent
 
 class TicTacToeGUI:
     def __init__(self, master):
         self.master = master
-        master.title("Tic Tac Toe")
-        self.mode = None  # "single" or "multi"
-        self.current_player = 1  # 1 for X, -1 for O
-        self.board = [0] * 9  # 0: empty, 1: X, -1: O
+        master.title("Tic Tac Toe TD-Learning")
         
-        # Load the RL agent for single-player mode.
-        self.agent = QLearningAgent(alpha=0.1, gamma=0.9, epsilon=0)
-        self.q_table_file = "q_table.pkl"
-        if os.path.exists(self.q_table_file):
-            self.agent.load_q_table(self.q_table_file)
+        # Initialize environment and agent.
+        self.env = TicTacToeEnv()
+        self.agent = TDLearningAgent(alpha=0.1, epsilon=0.1, debug=True)
+        self.value_table_file = "value_table.pkl"
+        if os.path.exists(self.value_table_file):
+            self.agent.load_value_table(self.value_table_file)
         else:
-            print("Q-table not found. AI may not work as expected.")
-
-        self.create_menu()
-
-    def create_menu(self):
-        self.menu_frame = tk.Frame(self.master)
-        self.menu_frame.pack(pady=20)
-
-        tk.Label(self.menu_frame, text="Select Game Mode:", font=("Helvetica", 14)).pack(pady=10)
-        tk.Button(self.menu_frame, text="Single Player (vs. AI)", font=("Helvetica", 12),
-                  command=lambda: self.start_game("single")).pack(pady=5)
-        tk.Button(self.menu_frame, text="Multiplayer", font=("Helvetica", 12),
-                  command=lambda: self.start_game("multi")).pack(pady=5)
-
-    def start_game(self, mode):
-        self.mode = mode
-        self.current_player = 1  # Reset to player 1 (X)
-        self.board = [0] * 9
-        # Destroy menu and create game board.
-        self.menu_frame.destroy()
-        self.create_board()
-        self.status_label = tk.Label(self.master, text="Player X's turn", font=("Helvetica", 14))
-        self.status_label.pack(pady=10)
-
-    def create_board(self):
+            print("No saved value table found. Starting fresh.")
+        
+        self.reset_game()
+    
+    def reset_game(self):
+        # Reset the board state using the environment.
+        self.board = self.env.reset().tolist()  # a list of 9 ints
+        self.last_state = self.board.copy()       # keep track of previous state for TD update
+        self.current_player = 1  # Agent (X) always goes first.
+        
+        # Create the GUI board.
+        if hasattr(self, 'frame'):
+            self.frame.destroy()
+        self.frame = tk.Frame(self.master)
+        self.frame.pack()
+        
         self.buttons = []
-        board_frame = tk.Frame(self.master)
-        board_frame.pack()
         for i in range(9):
-            btn = tk.Button(board_frame, text=" ", font=("Helvetica", 24), width=5, height=2,
-                            command=lambda i=i: self.on_button_click(i))
+            btn = tk.Button(self.frame, text=" ", font=("Helvetica", 24), width=5, height=2,
+                            command=lambda i=i: self.human_move(i))
             btn.grid(row=i//3, column=i%3)
             self.buttons.append(btn)
-        self.reset_button = tk.Button(self.master, text="Reset Game", font=("Helvetica", 12),
-                                      command=self.reset_game)
+        
+        # Status label and Reset button.
+        if hasattr(self, 'status_label'):
+            self.status_label.destroy()
+        self.status_label = tk.Label(self.master, text="", font=("Helvetica", 14))
+        self.status_label.pack(pady=10)
+        
+        if hasattr(self, 'reset_button'):
+            self.reset_button.destroy()
+        self.reset_button = tk.Button(self.master, text="Reset Game", font=("Helvetica", 12), command=self.reset_game)
         self.reset_button.pack(pady=10)
-
-    def on_button_click(self, index):
-        if self.board[index] != 0:
-            return  # already taken
-        # In both modes, human move:
-        if self.mode == "single" or self.mode == "multi":
-            self.make_move(index, self.current_player)
-            winner = check_winner(self.board)
-            if winner is not None:
-                self.end_game(winner)
-                return
-            # For multiplayer, simply alternate turns.
-            if self.mode == "multi":
-                self.current_player *= -1
-                self.status_label.config(text=f"Player {'X' if self.current_player==1 else 'O'}'s turn")
-            elif self.mode == "single":
-                # In single player, after human (always player 1 / X) move, let AI move if game not over.
-                self.master.after(300, self.ai_move)
-
-    def make_move(self, index, player):
-        self.board[index] = player
-        self.buttons[index].config(text="X" if player == 1 else "O", state="disabled")
-
-    def ai_move(self):
+        
+        # Start with the agent's move.
+        self.status_label.config(text="Agent's turn (X)")
+        self.master.after(500, self.agent_move)
+    
+    def update_button_texts(self):
+        for i, cell in enumerate(self.board):
+            if cell == 1:
+                self.buttons[i].config(text="X", state="disabled")
+            elif cell == -1:
+                self.buttons[i].config(text="O", state="disabled")
+            else:
+                self.buttons[i].config(text=" ", state="normal")
+    
+    def check_winner(self):
+        win_conditions = [
+            (0, 1, 2), (3, 4, 5), (6, 7, 8),  # rows
+            (0, 3, 6), (1, 4, 7), (2, 5, 8),  # columns
+            (0, 4, 8), (2, 4, 6)              # diagonals
+        ]
+        for (i, j, k) in win_conditions:
+            if self.board[i] != 0 and self.board[i] == self.board[j] == self.board[k]:
+                return self.board[i]
+        if 0 not in self.board:
+            return 0  # draw
+        return None
+    
+    def agent_move(self):
+        if self.current_player != 1:
+            return  # Not the agent's turn.
+        
         valid_actions = [i for i, cell in enumerate(self.board) if cell == 0]
         if not valid_actions:
             return
-        # Our RL agent is trained as player 1.
-        # Since in single-player mode the human is player 1 (X) and AI is player -1 (O),
-        # we transform the board for the agent by multiplying by -1.
-        transformed_state = -np.array(self.board)
-        action = self.agent.choose_action(transformed_state, valid_actions)
-        self.make_move(action, -1)
-        winner = check_winner(self.board)
+        
+        # Agent selects a move based on its current value estimates.
+        action = self.agent.choose_action(self.board, valid_actions)
+        self.make_move(action, 1)  # Agent (X) plays.
+        
+        # Check if the agent's move ended the game.
+        winner = self.check_winner()
         if winner is not None:
+            # Use terminal reward: 1 if agent wins, 0 otherwise.
+            terminal_reward = 1 if winner == 1 else 0
+            self.agent.update(self.last_state, self.board, reward=terminal_reward)
             self.end_game(winner)
         else:
-            self.status_label.config(text="Player X's turn")
+            # Nonterminal update.
+            self.agent.update(self.last_state, self.board)
+            self.last_state = self.board.copy()
+            self.current_player = -1
+            self.status_label.config(text="Your turn (O)")
 
+    
+    def human_move(self, index):
+        if self.current_player != -1:
+            return  # Not human's turn.
+        if self.board[index] != 0:
+            return
+        
+        self.make_move(index, -1)  # Human (O) plays.
+        
+        # Check if the human's move ended the game.
+        winner = self.check_winner()
+        if winner is not None:
+            # Terminal reward: 1 if agent wins, 0 if agent loses or draw.
+            terminal_reward = 1 if winner == 1 else 0
+            self.agent.update(self.last_state, self.board, reward=terminal_reward)
+            self.end_game(winner)
+        else:
+            # Nonterminal update.
+            self.agent.update(self.last_state, self.board)
+            self.last_state = self.board.copy()
+            self.current_player = 1
+            self.status_label.config(text="Agent's turn (X)")
+            self.master.after(500, self.agent_move)
+
+        
+    def make_move(self, index, player):
+        self.board[index] = player
+        self.update_button_texts()
+    
     def end_game(self, winner):
         if winner == 1:
-            result = "Player X wins!"
+            result = "Agent wins!"
         elif winner == -1:
-            result = "Player O wins!" if self.mode == "multi" else "AI wins!"
+            result = "You win!"
         else:
             result = "It's a draw!"
-        messagebox.showinfo("Game Over", result)
         self.status_label.config(text=result)
-        # Disable all buttons
         for btn in self.buttons:
             btn.config(state="disabled")
-
-    def reset_game(self):
-        self.board = [0] * 9
-        self.current_player = 1
-        for btn in self.buttons:
-            btn.config(text=" ", state="normal")
-        if self.mode == "single":
-            self.status_label.config(text="Player X's turn")
-        else:
-            self.status_label.config(text="Player X's turn")
+        messagebox.showinfo("Game Over", result)
+        
+        # Save the updated value table to disk.
+        self.agent.save_value_table(self.value_table_file)
 
 if __name__ == "__main__":
     root = tk.Tk()
-    game = TicTacToeGUI(root)
+    root.title("Tic Tac Toe TD-Learning GUI")
+    gui = TicTacToeGUI(root)
     root.mainloop()

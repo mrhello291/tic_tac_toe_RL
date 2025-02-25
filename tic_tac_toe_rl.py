@@ -36,98 +36,98 @@ class TicTacToeEnv:
             return 0, True  # draw
         return 0, False  # game continues
 
-class QLearningAgent:
-    def __init__(self, alpha=0.1, gamma=0.9, epsilon=1.0):
-        self.q_table = {}  # key: state (tuple), value: np.array of Q-values for 9 actions
+class TDLearningAgent:
+    def __init__(self, alpha=0.1, epsilon=0.1, debug=False):
+        self.value_table = {}  # key: state (tuple), value: probability of winning
         self.alpha = alpha
-        self.gamma = gamma
         self.epsilon = epsilon
+        self.debug = debug  # If True, print updates
 
     def get_state_key(self, state):
         return tuple(state)
 
-    def get_q_values(self, state):
+    def get_value(self, state):
         key = self.get_state_key(state)
-        if key not in self.q_table:
-            self.q_table[key] = np.zeros(9)  # initialize Q-values for all 9 actions
-        return self.q_table[key]
+        if key not in self.value_table:
+            self.value_table[key] = 0.5  # Initialize unknown states with 0.5
+        return self.value_table[key]
 
     def choose_action(self, state, valid_actions):
-        q_values = self.get_q_values(state)
-        # Epsilon-greedy policy: explore or choose best valid action.
         if random.random() < self.epsilon:
-            return random.choice(valid_actions)
-        q_valid = {a: q_values[a] for a in valid_actions}
-        return max(q_valid, key=q_valid.get)
+            return random.choice(valid_actions)  # Exploration
 
-    def update(self, state, action, reward, next_state, next_valid_actions):
-        q_values = self.get_q_values(state)
-        q_next = self.get_q_values(next_state)
-        max_q_next = max([q_next[a] for a in next_valid_actions]) if next_valid_actions else 0
-        q_values[action] += self.alpha * (reward + self.gamma * max_q_next - q_values[action])
+        # Exploitation: pick the move that leads to the highest value state
+        best_action = max(valid_actions, key=lambda a: self.get_value(self.get_next_state(state, a)))
+        return best_action
+
+    def get_next_state(self, state, action):
+        next_state = state.copy()
+        next_state[action] = 1  # Assume our player always plays as 1
+        return next_state
+
+    # def update(self, state, next_state, reward=None):
+    #     v_s = self.get_value(state)
+    #     # If a terminal reward is provided, use it; otherwise, use the estimated value of next_state.
+    #     v_s_prime = reward if reward is not None else self.get_value(next_state)
+    #     delta = self.alpha * (v_s_prime - v_s)
+    #     new_value = v_s + delta
+    #     key = self.get_state_key(state)
+    #     self.value_table[key] = new_value
+    #     if self.debug:
+    #         print(f"Updated state {key}: {v_s:.3f} -> {new_value:.3f}")
     
-    def save_q_table(self, filename):
-        """Save the Q-table to a file."""
+    def update(self, state, next_state, reward=None):
+        v_s = self.get_value(state)
+        # Use the provided reward if this is a terminal state; otherwise, use the estimated value.
+        v_s_prime = reward if reward is not None else self.get_value(next_state)
+        delta = self.alpha * (v_s_prime - v_s)
+        new_value = v_s + delta
+        self.value_table[self.get_state_key(state)] = new_value
+        if self.debug:
+            print(f"Updated state {self.get_state_key(state)}: {v_s:.3f} -> {new_value:.3f}")
+
+
+    def save_value_table(self, filename):
         with open(filename, 'wb') as f:
-            pickle.dump(self.q_table, f)
-        print(f"Q-table saved to '{filename}'")
-    
-    def load_q_table(self, filename):
-        """Load the Q-table from a file."""
-        with open(filename, 'rb') as f:
-            self.q_table = pickle.load(f)
-        print(f"Q-table loaded from '{filename}'")
+            pickle.dump(self.value_table, f)
+        print(f"Value table saved to '{filename}'")
 
-# If you run this file directly, it will train the agent and update the Q-table.
+    def load_value_table(self, filename):
+        with open(filename, 'rb') as f:
+            self.value_table = pickle.load(f)
+        print(f"Value table loaded from '{filename}'")
+
 if __name__ == "__main__":
-    # Hyperparameters
     num_episodes = 50000
     alpha = 0.1
-    gamma = 0.9
-    epsilon = 1.0
-    min_epsilon = 0.1
-    epsilon_decay = 0.99995  # Adjust decay rate as needed
-    q_table_file = "q_table.pkl"
-
-    # Initialize agent and environment
-    agent = QLearningAgent(alpha=alpha, gamma=gamma, epsilon=epsilon)
+    epsilon = 0.1
+    value_table_file = "value_table.pkl"
+    
+    agent = TDLearningAgent(alpha=alpha, epsilon=epsilon)
     env = TicTacToeEnv()
-
-    # Load existing Q-table if available
-    if os.path.exists(q_table_file):
-        agent.load_q_table(q_table_file)
-    else:
-        print("No Q-table file found. Starting from scratch.")
-
-    # Training loop
+    
+    if os.path.exists(value_table_file):
+        agent.load_value_table(value_table_file)
+    
     for episode in range(num_episodes):
         state = env.reset()
         done = False
-
+        
         while not done:
             valid_actions = env.get_valid_actions()
             action = agent.choose_action(state, valid_actions)
             next_state, reward, done = env.step(action, player=1)
-
-            # Opponent makes a move (random policy)
+            
             if not done:
                 opp_valid = env.get_valid_actions()
                 if opp_valid:
                     opp_action = random.choice(opp_valid)
-                    next_state, opp_reward, done = env.step(opp_action, player=-1)
-                    # If game ended after opponent's move, adjust reward.
-                    if done:
-                        reward = -opp_reward
-
-            next_valid_actions = env.get_valid_actions()
-            agent.update(state, action, reward, next_state, next_valid_actions)
+                    next_state, _, done = env.step(opp_action, player=-1)
+            
+            agent.update(state, next_state)
             state = next_state
-
-        # Decay epsilon after each episode
-        agent.epsilon = max(min_epsilon, agent.epsilon * epsilon_decay)
-
+        
         if (episode + 1) % 5000 == 0:
-            print(f"Episode {episode+1}/{num_episodes} - Epsilon: {agent.epsilon:.4f}")
-
-    # Save the updated Q-table after training
-    agent.save_q_table(q_table_file)
+            print(f"Episode {episode+1}/{num_episodes}")
+    
+    agent.save_value_table(value_table_file)
