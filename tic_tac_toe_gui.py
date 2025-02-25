@@ -10,11 +10,9 @@ class TicTacToeGUI:
         
         # Initialize environment and agent.
         self.env = TicTacToeEnv()
-        self.agent = TDLearningAgent(alpha=0.1, epsilon=0.1, debug=True)
-        self.value_table_file = "value_table.pkl"
-        if os.path.exists(self.value_table_file):
-            self.agent.load_value_table(self.value_table_file)
-        else:
+        self.agent = TDLearningAgent(alpha=0.1, epsilon=0.1, debug=True, tableFile="selfTable1.pkl")
+        self.value_table_file = self.agent.tableFile
+        if not os.path.exists(self.value_table_file):
             print("No saved value table found. Starting fresh.")
         
         self.reset_game()
@@ -143,7 +141,7 @@ class TicTacToeGUI:
         messagebox.showinfo("Game Over", result)
         
         # Save the updated value table to disk.
-        self.agent.save_value_table(self.value_table_file)
+        self.agent.save_value_table()
 
 if __name__ == "__main__":
     root = tk.Tk()

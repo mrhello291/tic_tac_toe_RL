@@ -37,8 +37,11 @@ class TicTacToeEnv:
         return 0, False  # game continues
 
 class TDLearningAgent:
-    def __init__(self, alpha=0.1, epsilon=0.1, debug=False):
+    def __init__(self, alpha=0.1, epsilon=0.1, debug=False, tableFile=None):
+        self.tableFile = tableFile
         self.value_table = {}  # key: state (tuple), value: probability of winning
+        if tableFile and os.path.exists(tableFile):
+            self.load_value_table(tableFile)
         self.alpha = alpha
         self.epsilon = epsilon
         self.debug = debug  # If True, print updates
@@ -87,10 +90,10 @@ class TDLearningAgent:
             print(f"Updated state {self.get_state_key(state)}: {v_s:.3f} -> {new_value:.3f}")
 
 
-    def save_value_table(self, filename):
-        with open(filename, 'wb') as f:
+    def save_value_table(self):
+        with open(self.tableFile, 'wb') as f:
             pickle.dump(self.value_table, f)
-        print(f"Value table saved to '{filename}'")
+        print(f"Value table saved to '{self.tableFile}'")
 
     def load_value_table(self, filename):
         with open(filename, 'rb') as f:
@@ -103,12 +106,9 @@ if __name__ == "__main__":
     epsilon = 0.1
     value_table_file = "value_table.pkl"
     
-    agent = TDLearningAgent(alpha=alpha, epsilon=epsilon)
+    agent = TDLearningAgent(alpha=alpha, epsilon=epsilon, tableFile=value_table_file)
     env = TicTacToeEnv()
-    
-    if os.path.exists(value_table_file):
-        agent.load_value_table(value_table_file)
-    
+        
     for episode in range(num_episodes):
         state = env.reset()
         done = False
@@ -130,4 +130,4 @@ if __name__ == "__main__":
         if (episode + 1) % 5000 == 0:
             print(f"Episode {episode+1}/{num_episodes}")
     
-    agent.save_value_table(value_table_file)
+    agent.save_value_table()
